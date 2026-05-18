@@ -1,18 +1,52 @@
-# This .gitignore is appropriate for repositories deployed to GitHub Pages and using
-# a Gemfile as specified at https://github.com/github/pages-gem#conventional
+# Build output
+build/
+build.old/
+*.bin
+*.elf
+*.map
 
-# Basic Jekyll gitignores (synchronize to Jekyll.gitignore)
-_site/
-.sass-cache/
-.jekyll-cache/
-.jekyll-metadata
+# Generated configs (regenerated from sdkconfig.defaults)
+sdkconfig
+sdkconfig.old
 
-# Additional Ruby/bundler ignore for when you run: bundle install
-/vendor
+# Managed components (auto-downloaded on build)
+managed_components/
 
-# Specific ignore for GitHub Pages
-# GitHub Pages will always use its own deployed version of pages-gem
-# This means GitHub Pages will NOT use your Gemfile.lock and therefore it is
-# counterproductive to check this file into the repository.
-# Details at https://github.com/github/pages-gem/issues/768
-Gemfile.lock
+# ESP-IDF cache
+.cache/
+
+# Kiro AI workspace files
+.kiro/
+
+# VS Code
+.vscode/
+
+# Backup (frozen, not for distribution)
+backup_sketch/
+
+# Old/reference projects not part of this release
+main/
+ESP32-P4/
+ESP32-P4-WIFI6-Touch-LCD-7B-main/
+esp32-XIP-3.1.1/
+
+# PDFs and datasheets (too large for git)
+*.pdf
+
+# Images (backgrounds, photos — user provides their own)
+backgrounds/
+background and boot/
+*.jpg
+*.jfif
+*.png
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Dependencies lock (regenerated)
+dependencies.lock
