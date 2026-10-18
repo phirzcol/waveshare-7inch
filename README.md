@@ -1,183 +1,177 @@
-# ESP32-P4 Tablet — Dual-Boot Firmware
+# phirzWaveshare7inchp4 — ESP32-P4 Tablet Triple-Boot Firmware
 
-A dual-boot firmware for the **Waveshare ESP32-P4-WIFI6-Touch-LCD-7B** development board featuring a full tablet UI with music player, file manager, text editor, photo viewer, and a standalone VNC remote desktop client.
+Triple-boot firmware for the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B tablet. Three independent apps share a single 32MB flash chip and swap between each other via OTA partition switching.
 
 ## Hardware
 
 - **Board**: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B
-- **SoC**: ESP32-P4 (dual-core RISC-V 360MHz) + ESP32-C6 (WiFi 6 via SDIO)
+- **MCU**: ESP32-P4 (dual-core RISC-V 360MHz)
+- **WiFi**: ESP32-C6-MINI-1 via SDIO (WiFi 6)
 - **Display**: 7" IPS 1024×600, MIPI-DSI, EK79007 controller
-- **Touch**: GT911 capacitive (I2C)
-- **Audio**: ES8311 DAC + ES7210 ADC, I2S, PA on GPIO53
-- **Storage**: 32MB Flash, 32MB PSRAM, SD card (SDMMC 4-bit)
-- **USB**: Type-A OTG 2.0 HS port (supports HID keyboard/mouse)
+- **Touch**: GT911 capacitive
+- **RAM**: 32MB PSRAM, 32MB Flash
+- **Audio**: ES8311 DAC + ES7210 ADC, I2S
+- **Storage**: SD card (SDMMC 4-bit)
+- **Input**: USB HID (iPazzport wireless keyboard/mouse combo)
+- **USB**: Type-A (host, for HID) + Type-C (device, for USB display mode)
 
-## Build Environment
+## Apps
 
-| Component | Version |
-|-----------|---------|
-| ESP-IDF | v5.5.4 |
-| LVGL | 9.2.2 (via managed component) |
-| esp_lvgl_port | 2.7.2 |
-| esp_hosted | 1.4.7 |
-| BSP | waveshare/esp32_p4_wifi6_touch_lcd_7b 1.0.2 |
+| Directory | Partition | Offset | Size | Description |
+|-----------|-----------|--------|------|-------------|
+| `main_app/` | factory | 0x10000 | 3MB | Tablet OS — music, files, photos, editor, WiFi, settings, web file manager |
+| `vnc_client/` | ota_0 | 0x310000 | 3MB | VNC remote desktop — Tight/ZRLE/Raw encoding, HW JPEG decode |
+| `usb_display/` | ota_1 | 0x610000 | 1MB | USB extended display — turns tablet into a USB monitor |
 
-### Required Environment Variables (PowerShell)
+## Triple-Boot Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     32MB Flash Layout                          │
+├──────┬──────┬──────┬───────────┬───────────┬────────┬────────┤
+│ NVS  │ OTA  │ PHY  │  factory  │   ota_0   │ ota_1  │  FAT   │
+│ 16K  │ data │ 4K   │   3MB     │    3MB    │  1MB   │ ~11MB  │
+│0x9000│ 8K   │0xF000│  0x10000  │ 0x310000  │0x610000│0x710000│
+│      │0xD000│      │ Main App  │VNC Client │USB Disp│Storage │
+└──────┴──────┴──────┴───────────┴───────────┴────────┴────────┘
+```
+
+### How Switching Works
+
+**Main App → VNC Client** (persistent):
+- User taps "VNC" icon on desktop
+- App calls `esp_ota_set_boot_partition(ota_0)` + `esp_restart()`
+- VNC client marks itself valid on boot → persists across reboots
+- User taps "Main App" button on VNC settings to return
+
+**Main App → USB Display** (one-shot, auto-rollback):
+- User taps "Display" icon on desktop
+- App calls `esp_ota_set_boot_partition(ota_1)` + `esp_restart()`
+- USB display does NOT mark itself valid
+- On next RESET → bootloader rolls back to factory (main app) automatically
+
+**Rollback mechanism**: `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` is set in main_app and vnc_client. Both call `esp_ota_mark_app_valid_cancel_rollback()` on boot. USB display never calls it, so the bootloader treats it as a failed update and rolls back on reboot.
+
+### Shared Data (NVS)
+
+All apps read/write the same NVS flash region:
+
+| Namespace | Key | Purpose |
+|-----------|-----|---------|
+| `wifi` | `ssid` | WiFi network name |
+| `wifi` | `pass` | WiFi password |
+| `vnc` | `host` | VNC server IP |
+| `vnc` | `port` | VNC server port |
+| `vnc` | `vnc_pass` | VNC authentication password |
+| `vnc` | `encoding` | 0=Tight, 1=ZRLE, 2=Raw |
+| `vnc` | `jpeg_q` | JPEG quality (0-9) |
+| `vnc` | `comp_lvl` | Compression level (1-9) |
+
+## Build
+
+Requires ESP-IDF v5.5.4.
 
 ```powershell
+# Set environment (required for all builds)
 $env:IDF_PATH = "C:\Espressif\frameworks\esp-idf-v5.5.4"
-$env:IDF_PYTHON_ENV_PATH = "C:\Espressif\python_env\idf5.5_py3.11_env"
-$env:IDF_TOOLS_PATH = "C:\Espressif"
 $env:ESP_IDF_VERSION = "5.5"
 $env:PATH = "C:\Espressif\tools\ninja\1.12.1;C:\Espressif\tools\cmake\3.30.2\bin;C:\Espressif\tools\riscv32-esp-elf\esp-14.2.0_20260121\riscv32-esp-elf\bin;C:\Espressif\python_env\idf5.5_py3.11_env\Scripts;" + $env:PATH
 ```
 
-> **Critical**: `$env:ESP_IDF_VERSION = "5.5"` must be set or esp_wifi_remote Kconfig will fail.
+**Important**: `ESP_IDF_VERSION=5.5` MUST be set before building (fixes esp_wifi_remote Kconfig resolution).
 
-## Project Structure
-
-```
-├── test_wifi_audio/          ← Main tablet app (factory partition)
-│   ├── main/
-│   │   ├── main.c           ← All UI + app logic
-│   │   ├── onscreen_keyboard.c/h
-│   │   ├── text_editor.c/h
-│   │   ├── photo_viewer.c/h
-│   │   ├── settings_manager.c/h
-│   │   ├── web_server.c/h
-│   │   ├── web_api_handlers.c
-│   │   └── web_page.html
-│   ├── sdkconfig.defaults
-│   ├── partitions.csv
-│   └── CMakeLists.txt
-├── vnc_client/               ← VNC remote desktop client (ota_0 partition)
-│   ├── main/
-│   │   ├── main.c           ← Settings page + VNC connection
-│   │   ├── vnc_rfb.c/h      ← RFB protocol (Tight encoding, JPEG)
-│   │   ├── vnc_display.c/h  ← Framebuffer + HW JPEG decode
-│   │   └── vnc_input.c/h    ← Mouse/keyboard → VNC events
-│   ├── sdkconfig.defaults
-│   ├── partitions.csv
-│   └── CMakeLists.txt
-├── components/
-│   ├── esp-audio-player/     ← MP3/WAV decoder with ring buffer
-│   └── bsp_extra/            ← Board support (codec, audio init)
-└── 4.0inch/serial_monitor/   ← Optional: CYD serial monitor sketch
-```
-
-## Partition Layout (32MB Flash)
-
-| Name | Type | Offset | Size |
-|------|------|--------|------|
-| nvs | data | 0x9000 | 16KB |
-| otadata | data | 0xd000 | 8KB |
-| phy_init | data | 0xf000 | 4KB |
-| factory | app | 0x10000 | 4MB |
-| ota_0 | app | 0x410000 | 4MB |
-| storage | data/fat | 0x810000 | 10MB |
-
-## Build & Flash Instructions
-
-### 1. Build Main App
+### Build Each App
 
 ```powershell
-cd test_wifi_audio
+# Main App
+cd main_app
+idf.py build
+
+# VNC Client
+cd ../vnc_client
+idf.py build
+
+# USB Display
+cd ../usb_display
+idf.py set-target esp32p4
 idf.py build
 ```
 
-### 2. Build VNC Client
+### Post-Build: Apply iPazzport Patch (main_app and vnc_client)
+
+After the first build of main_app and vnc_client (which fetches `managed_components`), apply the USB HID patch:
 
 ```powershell
-cd vnc_client
+# In main_app/:
+copy patches\esp_lvgl_port_usbhid.c managed_components\espressif__esp_lvgl_port\src\lvgl9\
+idf.py build
+
+# In vnc_client/:
+copy patches\esp_lvgl_port_usbhid.c managed_components\espressif__esp_lvgl_port\src\lvgl9\
 idf.py build
 ```
 
-### 3. Flash Both (device in boot mode)
+This patches the iPazzport 8-byte HID report format (16-bit axes, report ID 0x01) and ignores SET_IDLE/SET_PROTOCOL STALLs.
 
-Flash order matters. The main app flash includes bootloader, partition table, and otadata.
+## Flash
+
+### Initial Flash (all three apps)
 
 ```powershell
-# Step 1: Flash main app to FACTORY partition (0x10000)
-# This also writes bootloader, partition table, and otadata
-cd test_wifi_audio
+# 1. Flash main app to factory (includes bootloader + partition table + otadata)
+cd main_app
 idf.py -p COM23 flash
 
-# Step 2: Flash VNC client to OTA_0 partition (0x410000)
-# IMPORTANT: Do NOT use "idf.py flash" from vnc_client/ — that would overwrite factory!
-# Use esptool directly with the correct offset:
-python -m esptool --chip esp32p4 -p COM23 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 32MB 0x410000 E:\path\to\vnc_client\build\vnc_client.bin
+# 2. Flash VNC client to ota_0
+python -m esptool --chip esp32p4 -p COM23 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 32MB 0x310000 ../vnc_client/build/vnc_client.bin
+
+# 3. Flash USB display to ota_1
+python -m esptool --chip esp32p4 -p COM23 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 32MB 0x610000 ../usb_display/build/usb_touch_screen.bin
 ```
 
-> **WARNING**: Running `idf.py flash` from the `vnc_client/` directory will flash to factory (0x10000) and overwrite the main app. Always use esptool with explicit offset `0x410000` for the VNC client.
+### Update Individual Apps
 
-### 4. Boot Mode
+```powershell
+# Main app only (rewrites factory + bootloader + partition table)
+cd main_app && idf.py -p COM23 flash
 
-Hold **BOOT** button, press **RESET**, release **BOOT**. Flash, then press **RESET** to run.
+# VNC client only
+python -m esptool --chip esp32p4 -p COM23 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 32MB 0x310000 vnc_client/build/vnc_client.bin
 
-## SD Card Setup
-
-Create these folders on a FAT32 formatted SD card:
-
-```
-/sdcard/
-├── h/              ← Background images (1024x600 JPEG)
-├── photos/         ← Photos for photo viewer (JPEG)
-├── text/           ← Text files for editor
-└── music/          ← MP3/WAV files (or any folder with audio)
+# USB display only
+python -m esptool --chip esp32p4 -p COM23 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 32MB 0x610000 usb_display/build/usb_touch_screen.bin
 ```
 
-Place at least one 1024×600 JPEG in `/sdcard/h/` for the desktop background.
+### Critical Flash Rules
 
-## Configuration
+- **NEVER** use `idf.py flash` from vnc_client/ or usb_display/ — it overwrites factory
+- **ALWAYS** use esptool with explicit offsets for ota_0 and ota_1
+- Device does NOT auto-reset after flash — press RESET manually
+- Put device in boot mode: hold BOOT, press RESET, release BOOT
 
-### WiFi
-Edit `test_wifi_audio/main/main.c`:
-```c
-#define WIFI_SSID     "YOUR_WIFI_SSID"
-#define WIFI_PASS     "YOUR_WIFI_PASSWORD"
-```
+## USB Display Mode
 
-Or configure via the built-in web settings server after connecting.
+The USB display turns the tablet into an external monitor via USB:
+- Connect Type-C port to PC for power
+- Connect Type-A port to PC for video data
+- Install Windows driver from `usb_display/windows_driver/`
+- Press RESET to return to main app (auto-rollback)
 
-### Web Settings Server
-Once WiFi is connected, the device serves a settings page at its IP address.
-- **Default AP SSID**: `ESP32-P4-Tablet`
-- **Default AP Password**: `steampunk`
-- **Default Admin Password**: `esp32tablet`
+## Web File Manager
 
-### VNC Client
-All VNC settings (server IP, port, JPEG quality, compression) are configured on-screen and saved to NVS. No code changes needed.
+When WiFi is connected in the main app, open the device IP in a browser to access:
+- Device status (memory, uptime, audio state)
+- WiFi credential management
+- SD card file browser (browse, upload, download, delete)
+- Brightness and volume controls
+- Default login: admin / esp32tablet
 
-## Dual-Boot Usage
+## Known Issues
 
-- **Main App → VNC**: Tap the "VNC" icon on the desktop
-- **VNC → Main App**: Tap "Main App" button on VNC settings screen
-- Both apps share NVS for WiFi credentials
+- ZRLE encoding (VNC) has a subtle blue tint on some static solid-color areas. Tight and Raw modes unaffected.
+- iPazzport patch must be reapplied after `managed_components` is re-fetched.
+- First WiFi connect attempt usually fails (ESP-Hosted SDIO settling). Auto-retries.
 
-## Features
+## License
 
-### Main App
-- Swipeable desktop with app icons
-- Music player (MP3/WAV, ring buffer pipeline, auto-advance)
-- File manager (browse SD card, tap MP3 to play, tap .txt to edit)
-- Text editor with on-screen keyboard
-- Photo viewer (hardware JPEG decode)
-- WiFi management
-- USB HID keyboard/mouse support (iPazzport combo)
-- Web settings server
-
-### VNC Client
-- Connects to TightVNC/TurboVNC server
-- Tight encoding with hardware JPEG decode
-- Touch → VNC pointer events
-- USB keyboard → VNC key events
-- On-screen keyboard for VNC input
-- Configurable JPEG quality and compression level
-- Battery status indicator (brownout detector)
-
-## Known Limitations
-
-- VNC streaming + audio playback cannot run simultaneously (SDIO bus conflict)
-- Battery monitoring is threshold-based only (Full/Low/Critical), not percentage
-- ESP-Hosted SDIO queue sizes reduced to 10 for stability under heavy WiFi load
-- Hardware JPEG decoder rejects images with dimensions not divisible by 8
+MIT
