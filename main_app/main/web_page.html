@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ESP32-P4 Settings</title>
+<style>
+:root{--bg:#121212;--surface:#1e1e1e;--accent:#bb86fc;--accent-dark:#9a67ea;--text:#e0e0e0;--text-sec:#a0a0a0;--success:#4caf50;--error:#ef5350;--input-bg:#2c2c2c;--radius:8px;--shadow:0 2px 8px rgba(0,0,0,.4)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;min-width:320px;line-height:1.5}
+h1{text-align:center;color:var(--accent);margin-bottom:20px;font-size:1.4em}
+.card{background:var(--surface);border-radius:var(--radius);padding:16px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card h2{font-size:1.1em;margin-bottom:12px;color:var(--accent);font-weight:500}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.row label{min-width:80px;font-size:.9em;color:var(--text-sec)}
+.row input[type=text],.row input[type=password],.row input[type=number]{flex:1;min-width:0;background:var(--input-bg);border:1px solid #444;border-radius:4px;padding:8px 10px;color:var(--text);font-size:.9em}
+.row input:focus{outline:none;border-color:var(--accent)}
+input[type=range]{flex:1;min-width:100px;accent-color:var(--accent)}
+.btn{background:var(--accent);color:#000;border:none;border-radius:4px;padding:8px 16px;font-size:.9em;font-weight:600;cursor:pointer;transition:background .2s}
+.btn:hover{background:var(--accent-dark)}
+.btn:active{transform:scale(.97)}
+.btn-sm{padding:4px 10px;font-size:.8em}
+.btn-danger{background:var(--error)}
+.btn-danger:hover{background:#c62828}
+.feedback{font-size:.8em;margin-top:6px;min-height:1.2em}
+.feedback.ok{color:var(--success)}
+.feedback.err{color:var(--error)}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.stat{background:var(--input-bg);border-radius:4px;padding:8px;text-align:center}
+.stat .val{font-size:1.1em;font-weight:600;color:var(--accent)}
+.stat .lbl{font-size:.75em;color:var(--text-sec);margin-top:2px}
+.slider-row{display:flex;align-items:center;gap:10px}
+.slider-row span{min-width:36px;text-align:right;font-size:.9em}
+.toggle-pw{background:none;border:1px solid #555;color:var(--text-sec);border-radius:4px;padding:4px 8px;font-size:.75em;cursor:pointer}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--surface);border-radius:var(--radius);padding:24px;width:90%;max-width:320px;box-shadow:var(--shadow)}
+.modal h3{margin-bottom:12px;color:var(--accent)}
+.modal input{width:100%;margin-bottom:10px;background:var(--input-bg);border:1px solid #444;border-radius:4px;padding:8px;color:var(--text);font-size:.9em}
+.modal .btn{width:100%}
+.file-path{font-size:.85em;color:var(--text-sec);margin-bottom:8px;word-break:break-all}
+.file-list{max-height:400px;overflow-y:auto}
+.file-item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:4px;cursor:pointer;transition:background .15s}
+.file-item:hover{background:var(--input-bg)}
+.file-item .icon{font-size:1.2em;min-width:24px;text-align:center}
+.file-item .name{flex:1;font-size:.9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-item .size{font-size:.75em;color:var(--text-sec);min-width:60px;text-align:right}
+.file-item .actions{display:flex;gap:4px}
+.file-toolbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+.upload-area{border:2px dashed #444;border-radius:var(--radius);padding:20px;text-align:center;color:var(--text-sec);font-size:.85em;margin-top:10px;transition:border-color .2s}
+.upload-area.drag{border-color:var(--accent);color:var(--accent)}
+.upload-area input{display:none}
+.progress{height:4px;background:var(--input-bg);border-radius:2px;margin-top:8px;overflow:hidden;display:none}
+.progress .bar{height:100%;background:var(--accent);width:0;transition:width .3s}
+@media(max-width:400px){body{padding:8px}.card{padding:12px}.row label{min-width:60px;font-size:.8em}}
+</style>
+</head>
+<body>
+<h1>&#9881; ESP32-P4 Tablet</h1>
+
+<div class="card">
+<h2>Device Status</h2>
+<div class="status-grid" id="status-grid">
+<div class="stat"><div class="val" id="s-ip">--</div><div class="lbl">IP Address</div></div>
+<div class="stat"><div class="val" id="s-mode">--</div><div class="lbl">WiFi Mode</div></div>
+<div class="stat"><div class="val" id="s-ram">--</div><div class="lbl">Free RAM</div></div>
+<div class="stat"><div class="val" id="s-uptime">--</div><div class="lbl">Uptime</div></div>
+<div class="stat"><div class="val" id="s-audio">--</div><div class="lbl">Audio</div></div>
+<div class="stat"><div class="val" id="s-track">--</div><div class="lbl">Track</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>&#128193; File Manager</h2>
+<div class="file-toolbar">
+<button class="btn btn-sm" onclick="fileNav('/sdcard')">Root</button>
+<button class="btn btn-sm" onclick="fileUp()">&#8593; Up</button>
+<button class="btn btn-sm" onclick="fileMkdir()">New Folder</button>
+</div>
+<div class="file-path" id="file-path">/sdcard</div>
+<div class="file-list" id="file-list"></div>
+<div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+&#128228; Click or drag files here to upload
+<input type="file" id="file-input" multiple>
+</div>
+<div class="progress" id="upload-progress"><div class="bar" id="upload-bar"></div></div>
+<div class="feedback" id="fb-files"></div>
+</div>
+
+<div class="card">
+<h2>WiFi Credentials</h2>
+<div class="row"><label>SSID</label><input type="text" id="wifi-ssid" maxlength="32" placeholder="Network name"></div>
+<div class="row"><label>Password</label><input type="password" id="wifi-pass" maxlength="63" placeholder="8-63 characters"></div>
+<div class="row"><button class="btn" onclick="saveWifi()">Save WiFi</button></div>
+<div class="feedback" id="fb-wifi"></div>
+</div>
+
+<div class="card">
+<h2>Display Brightness</h2>
+<div class="slider-row">
+<span id="bright-val">--</span>
+<input type="range" id="bright-slider" min="0" max="100" step="5">
+<span>%</span>
+</div>
+<div class="feedback" id="fb-bright"></div>
+</div>
+
+<div class="card">
+<h2>Audio Volume</h2>
+<div class="slider-row">
+<span id="vol-val">--</span>
+<input type="range" id="vol-slider" min="0" max="100" step="5">
+<span>%</span>
+</div>
+<div class="feedback" id="fb-vol"></div>
+</div>
+
+<div class="card">
+<h2>AP Mode Config</h2>
+<div class="row"><label>AP SSID</label><input type="text" id="ap-ssid" maxlength="32" placeholder="Access point name"></div>
+<div class="row"><label>AP Pass</label><input type="password" id="ap-pass" maxlength="63" placeholder="8-63 characters"><button class="toggle-pw" onclick="togglePw('ap-pass',this)">Show</button></div>
+<div class="row"><button class="btn" onclick="saveAp()">Save AP Config</button></div>
+<div class="feedback" id="fb-ap"></div>
+</div>
+
+<div class="card">
+<h2>Admin Password</h2>
+<div class="row"><label>Current</label><input type="password" id="pw-cur" placeholder="Current password"></div>
+<div class="row"><label>New</label><input type="password" id="pw-new" placeholder="8-32 characters"></div>
+<div class="row"><button class="btn" onclick="changePw()">Change Password</button></div>
+<div class="feedback" id="fb-pw"></div>
+</div>
+
+<div class="modal-bg" id="auth-modal">
+<div class="modal">
+<h3>Authentication</h3>
+<input type="text" id="auth-user" placeholder="Username" value="admin">
+<input type="password" id="auth-pass" placeholder="Password">
+<button class="btn" id="auth-ok">Login</button>
+</div>
+</div>
+
+<script>
+var authUser='',authPass='',authResolve=null;
+var currentPath='/sdcard';
+
+function getAuth(){
+ if(authUser&&authPass)return Promise.resolve();
+ return new Promise(function(res){
+  authResolve=res;
+  document.getElementById('auth-modal').classList.add('show');
+  document.getElementById('auth-pass').value='';
+  document.getElementById('auth-pass').focus();
+ });
+}
+
+document.getElementById('auth-ok').onclick=function(){
+ authUser=document.getElementById('auth-user').value||'admin';
+ authPass=document.getElementById('auth-pass').value;
+ document.getElementById('auth-modal').classList.remove('show');
+ if(authResolve){authResolve();authResolve=null;}
+};
+
+document.getElementById('auth-pass').onkeydown=function(e){
+ if(e.key==='Enter')document.getElementById('auth-ok').click();
+};
+
+function authHeader(){return 'Basic '+btoa(authUser+':'+authPass);}
+
+function fb(id,msg,ok){
+ var el=document.getElementById(id);
+ el.textContent=msg;
+ el.className='feedback '+(ok?'ok':'err');
+ if(ok)setTimeout(function(){el.textContent='';},3000);
+}
+
+function togglePw(id,btn){
+ var inp=document.getElementById(id);
+ if(inp.type==='password'){inp.type='text';btn.textContent='Hide';}
+ else{inp.type='password';btn.textContent='Show';}
+}
+
+function postSettings(data,fbId){
+ return getAuth().then(function(){
+  return fetch('/api/settings',{
+   method:'POST',
+   headers:{'Content-Type':'application/json','Authorization':authHeader()},
+   body:JSON.stringify(data)
+  });
+ }).then(function(r){return r.json().then(function(j){return{s:r.status,j:j};});})
+ .then(function(d){
+  if(d.s===200){fb(fbId,'Saved successfully',true);}
+  else if(d.s===401){authUser='';authPass='';fb(fbId,'Auth failed - try again',false);}
+  else{fb(fbId,d.j.message||'Error',false);}
+ }).catch(function(e){fb(fbId,'Network error',false);});
+}
+
+function saveWifi(){
+ var ssid=document.getElementById('wifi-ssid').value;
+ var pass=document.getElementById('wifi-pass').value;
+ if(!ssid){fb('fb-wifi','SSID required',false);return;}
+ if(pass&&(pass.length<8||pass.length>63)){fb('fb-wifi','Password must be 8-63 chars',false);return;}
+ var d={wifi_ssid:ssid};
+ if(pass)d.wifi_pass=pass;
+ postSettings(d,'fb-wifi');
+}
+
+function saveAp(){
+ var ssid=document.getElementById('ap-ssid').value;
+ var pass=document.getElementById('ap-pass').value;
+ if(!ssid){fb('fb-ap','AP SSID required',false);return;}
+ if(pass&&(pass.length<8||pass.length>63)){fb('fb-ap','Password must be 8-63 chars',false);return;}
+ var d={ap_ssid:ssid};
+ if(pass)d.ap_pass=pass;
+ postSettings(d,'fb-ap');
+}
+
+function changePw(){
+ var cur=document.getElementById('pw-cur').value;
+ var nw=document.getElementById('pw-new').value;
+ if(!cur||!nw){fb('fb-pw','Both fields required',false);return;}
+ if(nw.length<8||nw.length>32){fb('fb-pw','New password must be 8-32 chars',false);return;}
+ getAuth().then(function(){
+  return fetch('/api/password',{
+   method:'POST',
+   headers:{'Content-Type':'application/json','Authorization':authHeader()},
+   body:JSON.stringify({current_password:cur,new_password:nw})
+  });
+ }).then(function(r){return r.json().then(function(j){return{s:r.status,j:j};});})
+ .then(function(d){
+  if(d.s===200){fb('fb-pw','Password changed',true);authPass=nw;document.getElementById('pw-cur').value='';document.getElementById('pw-new').value='';}
+  else if(d.s===401){authUser='';authPass='';fb('fb-pw','Auth failed',false);}
+  else if(d.s===403){fb('fb-pw','Current password incorrect',false);}
+  else{fb('fb-pw',d.j.message||'Error',false);}
+ }).catch(function(e){fb('fb-pw','Network error',false);});
+}
+
+var brightSlider=document.getElementById('bright-slider');
+var volSlider=document.getElementById('vol-slider');
+
+brightSlider.oninput=function(){document.getElementById('bright-val').textContent=this.value;};
+brightSlider.onchange=function(){postSettings({brightness:parseInt(this.value)},'fb-bright');};
+
+volSlider.oninput=function(){document.getElementById('vol-val').textContent=this.value;};
+volSlider.onchange=function(){postSettings({volume:parseInt(this.value)},'fb-vol');};
+
+/* ---- File Manager ---- */
+
+function fmtSize(b){
+ if(b<1024)return b+'B';
+ if(b<1048576)return(b/1024).toFixed(1)+'KB';
+ return(b/1048576).toFixed(1)+'MB';
+}
+
+function fileNav(path){
+ currentPath=path;
+ document.getElementById('file-path').textContent=path;
+ document.getElementById('file-list').innerHTML='<div style="color:var(--text-sec);padding:12px;text-align:center">Loading...</div>';
+ fetch('/api/files?path='+encodeURIComponent(path))
+ .then(function(r){return r.json();})
+ .then(function(d){
+  var list=document.getElementById('file-list');
+  if(!d.files||d.files.length===0){
+   list.innerHTML='<div style="color:var(--text-sec);padding:12px;text-align:center">Empty folder</div>';
+   return;
+  }
+  d.files.sort(function(a,b){if(a.dir&&!b.dir)return -1;if(!a.dir&&b.dir)return 1;return a.name.localeCompare(b.name);});
+  var html='';
+  for(var i=0;i<d.files.length;i++){
+   var f=d.files[i];
+   var icon=f.dir?'&#128193;':'&#128196;';
+   var sz=f.dir?'':fmtSize(f.size);
+   var fp=path+(path.endsWith('/')?'':'/')+f.name;
+   if(f.dir){
+    html+='<div class="file-item" onclick="fileNav(\''+fp.replace(/'/g,"\\'")+'\')">';
+    html+='<span class="icon">'+icon+'</span><span class="name">'+f.name+'</span><span class="size">'+sz+'</span>';
+    html+='<span class="actions"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();fileDelete(\''+fp.replace(/'/g,"\\'")+'\')">Del</button></span>';
+    html+='</div>';
+   } else {
+    html+='<div class="file-item">';
+    html+='<span class="icon">'+icon+'</span><span class="name">'+f.name+'</span><span class="size">'+sz+'</span>';
+    html+='<span class="actions">';
+    html+='<a class="btn btn-sm" href="/api/files/download?path='+encodeURIComponent(fp)+'" style="text-decoration:none;color:#000">DL</a>';
+    html+='<button class="btn btn-sm btn-danger" onclick="fileDelete(\''+fp.replace(/'/g,"\\'")+'\')">Del</button>';
+    html+='</span></div>';
+   }
+  }
+  list.innerHTML=html;
+ })
+ .catch(function(e){
+  document.getElementById('file-list').innerHTML='<div style="color:var(--error);padding:12px">Failed to load: '+e.message+'</div>';
+ });
+}
+
+function fileUp(){
+ if(currentPath==='/sdcard')return;
+ var parts=currentPath.split('/');
+ parts.pop();
+ var parent=parts.join('/')||'/sdcard';
+ if(parent.length<7)parent='/sdcard';
+ fileNav(parent);
+}
+
+function fileMkdir(){
+ var name=prompt('New folder name:');
+ if(!name)return;
+ var path=currentPath+(currentPath.endsWith('/')?'':'/')+name;
+ fetch('/api/files/mkdir?path='+encodeURIComponent(path),{method:'POST'})
+ .then(function(r){return r.json();})
+ .then(function(d){
+  if(d.status==='ok'){fb('fb-files','Folder created',true);fileNav(currentPath);}
+  else{fb('fb-files',d.error||'Failed',false);}
+ }).catch(function(e){fb('fb-files','Error: '+e.message,false);});
+}
+
+function fileDelete(path){
+ if(!confirm('Delete '+path+'?'))return;
+ fetch('/api/files/delete?path='+encodeURIComponent(path),{method:'POST'})
+ .then(function(r){return r.json();})
+ .then(function(d){
+  if(d.status==='ok'){fb('fb-files','Deleted',true);fileNav(currentPath);}
+  else{fb('fb-files',d.error||'Failed',false);}
+ }).catch(function(e){fb('fb-files','Error: '+e.message,false);});
+}
+
+function uploadFile(file){
+ var path=currentPath+(currentPath.endsWith('/')?'':'/')+file.name;
+ var prog=document.getElementById('upload-progress');
+ var bar=document.getElementById('upload-bar');
+ prog.style.display='block';
+ bar.style.width='0%';
+
+ var xhr=new XMLHttpRequest();
+ xhr.open('POST','/api/files/upload?path='+encodeURIComponent(path),true);
+ xhr.upload.onprogress=function(e){
+  if(e.lengthComputable){bar.style.width=Math.round(e.loaded/e.total*100)+'%';}
+ };
+ xhr.onload=function(){
+  prog.style.display='none';
+  if(xhr.status===200){fb('fb-files','Uploaded: '+file.name,true);fileNav(currentPath);}
+  else{fb('fb-files','Upload failed',false);}
+ };
+ xhr.onerror=function(){prog.style.display='none';fb('fb-files','Upload error',false);};
+ xhr.send(file);
+}
+
+document.getElementById('file-input').onchange=function(e){
+ var files=e.target.files;
+ for(var i=0;i<files.length;i++){uploadFile(files[i]);}
+ e.target.value='';
+};
+
+var uploadArea=document.getElementById('upload-area');
+uploadArea.ondragover=function(e){e.preventDefault();this.classList.add('drag');};
+uploadArea.ondragleave=function(){this.classList.remove('drag');};
+uploadArea.ondrop=function(e){
+ e.preventDefault();this.classList.remove('drag');
+ var files=e.dataTransfer.files;
+ for(var i=0;i<files.length;i++){uploadFile(files[i]);}
+};
+
+/* ---- Init ---- */
+
+function loadSettings(){
+ fetch('/api/settings').then(function(r){return r.json();}).then(function(d){
+  if(d.wifi_ssid)document.getElementById('wifi-ssid').value=d.wifi_ssid;
+  if(d.brightness!==undefined){brightSlider.value=d.brightness;document.getElementById('bright-val').textContent=d.brightness;}
+  if(d.volume!==undefined){volSlider.value=d.volume;document.getElementById('vol-val').textContent=d.volume;}
+  if(d.ap_ssid)document.getElementById('ap-ssid').value=d.ap_ssid;
+ }).catch(function(){});
+}
+
+function loadStatus(){
+ fetch('/api/status').then(function(r){return r.json();}).then(function(d){
+  document.getElementById('s-ip').textContent=d.ip||'--';
+  document.getElementById('s-mode').textContent=d.wifi_mode||'--';
+  var ram=(d.free_internal_kb||0)+'KB';
+  if(d.free_psram_mb)ram+=' + '+d.free_psram_mb+'MB';
+  document.getElementById('s-ram').textContent=ram;
+  var h=d.uptime_hours||0,m=d.uptime_minutes||0;
+  document.getElementById('s-uptime').textContent=h+'h '+m+'m';
+  document.getElementById('s-audio').textContent=d.audio_state||'stopped';
+  document.getElementById('s-track').textContent=d.audio_track||'None';
+ }).catch(function(){});
+}
+
+loadSettings();
+loadStatus();
+setInterval(loadStatus,5000);
+fileNav('/sdcard');
+</script>
+</body>
+</html>
